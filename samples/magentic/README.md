@@ -32,3 +32,34 @@ It is based on the (Magentic One concept)[https://www.microsoft.com/en-us/resear
 - Special models for some agents:
   - ResearcherAgent: gpt-4o-search-preview (web search capability)
   - CoderAgent: OpenAI Assistants with code interpreter
+
+
+## Setup
+
+1. Clone the repository and navigate to the `samples/magentic` directory.
+2. Create a virtual environment and install dependencies:
+
+   ```bash
+   python -m venv .agentic
+   source .agentic/bin/activate  # On Windows use `.agentic\Scripts\activate`
+   pip install -r requirements.txt
+   ```
+
+3. Copy the `.env.example` to `.env` and set your Azure OpenAI endpoint and deployment names:
+
+   ```bash
+    cp .env.example .env
+    ```
+
+4. Edit the `.env` file to include your Azure OpenAI endpoint and deployment names.
+5. Run the Magentic orchestration script:
+
+   ```bash
+   python main.py
+   ```
+
+6. Observe the console output for real-time orchestration events and the final synthesized result.
+
+## Notes
+
+you need a model capable of searching in the internet to get the better results with the ResearcherAgent. If you have access to gpt-4o-search-preview, use it. Otherwise, you can use gpt-4o or any other model you have access to, but the results may vary. Additionally, you could add a tool to research the web, but the results won't also be as good as with a model with search capabilities.

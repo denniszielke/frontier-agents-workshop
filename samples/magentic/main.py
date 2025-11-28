@@ -29,7 +29,6 @@ from agent_framework import (
     MagenticBuilder,
     MagenticFinalResultEvent,
     MagenticOrchestratorMessageEvent,
-    WorkflowOutputEvent,
     WorkflowEvent,
 )
 from agent_framework.azure import AzureOpenAIChatClient, AzureOpenAIResponsesClient 
@@ -190,32 +189,17 @@ async def run_magentic_workflow() -> None:
     print("\nStarting workflow execution...")
     
     try:
-        output: str | None = None
-        
         # Execute the workflow with streaming enabled
         # This returns an async generator yielding events as they occur
         async for event in workflow.run_stream(task):
             # Process each event
             on_event(event)
-            
-            # Capture the final output when workflow completes
-            if isinstance(event, WorkflowOutputEvent):
-                if isinstance(event, ChatMessage):
-                  output = str(event.text)
-                #elif event.data is not None and str(event.data) != "":
-                 # output = str(event.data)
-                else:
-                  output = None
 
-        # Display the final workflow result
-        if output is not None:
-            print(f"Workflow completed with result:\n\n{output}")
-
+        print(f"Workflow completed!")
     except Exception as e:
         # Handle any errors during workflow execution
         logger.error(f"Workflow execution failed: {e}", exc_info=True)
         print(f"Workflow execution failed: {e}")
-
 
 async def main() -> None:
     """Entry point for the Magentic workflow application.

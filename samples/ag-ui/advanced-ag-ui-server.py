@@ -1,4 +1,11 @@
 # Copyright (c) Microsoft. All rights reserved.
+import sys
+from pathlib import Path
+
+# Add the project root to the path so we can import from samples.shared
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from samples.shared.model_client import create_chat_client
 
 """AG-UI server example with server-side tools."""
 
@@ -7,10 +14,8 @@ import os
 
 from agent_framework import ChatAgent, ai_function
 from agent_framework.ag_ui import add_agent_framework_fastapi_endpoint
-from agent_framework.openai import OpenAIChatClient
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from openai import AsyncOpenAI
 
 from dotenv import load_dotenv
 
@@ -23,28 +28,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+medium_model_name = os.environ.get("MEDIUM_DEPLOYMENT_MODEL_NAME")
 
-if (os.environ.get("GITHUB_TOKEN") is not None):
-    token = os.environ["GITHUB_TOKEN"]
-    endpoint = "https://models.github.ai/inference"
-    model_name = os.environ.get("SMALL_DEPLOYMENT_MODEL_NAME")
-    print("Using GitHub Token for authentication")
-elif (os.environ.get("AZURE_OPENAI_API_KEY") is not None):
-    token = os.environ["AZURE_OPENAI_API_KEY"]
-    endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
-    model_name = os.environ.get("SMALL_DEPLOYMENT_MODEL_NAME")
-    print("Using Azure OpenAI Token for authentication")
+medium_client=create_chat_client(medium_model_name)
 
-async_openai_client = AsyncOpenAI(
-    base_url=endpoint,
-    api_key=token
-)
-
-openai_client=OpenAIChatClient(
-    model_id = model_name,
-    api_key=token,
-    async_client = async_openai_client
-)
 
 # Server-side tool (executes on server)
 @ai_function(description="Get the time zone for a location.")
@@ -77,7 +64,7 @@ def get_time_zone(location: str) -> str:
 agent = ChatAgent(
     name="AGUIAssistant",
     instructions="You are a helpful assistant. Use get_weather for weather and get_time_zone for time zones.",
-    chat_client=openai_client,
+    chat_client=medium_client,
     tools=[get_time_zone],  # ONLY server-side tools
 )
 

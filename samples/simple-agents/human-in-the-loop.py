@@ -1,15 +1,21 @@
 # Copyright (c) Microsoft. All rights reserved.
+
+import sys
+from pathlib import Path
+
+# Add the project root to the path so we can import from samples.shared
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from samples.shared.model_client import create_chat_client
+
 import os
 import asyncio
 from random import randint
 from typing import Annotated
 from agent_framework import ChatAgent, ChatMessage, Role
 from agent_framework import ai_function
-from agent_framework.openai import OpenAIChatClient
 from pydantic import Field
 import random
-
-from openai import AsyncOpenAI
 
 from dotenv import load_dotenv
 
@@ -23,42 +29,15 @@ Shows function calling capabilities with custom business logic.
 
 """
 
-if (os.environ.get("GITHUB_TOKEN") is not None):
-    token = os.environ["GITHUB_TOKEN"]
-    endpoint = "https://models.github.ai/inference"
-    print("Using GitHub Token for authentication")
-elif (os.environ.get("AZURE_OPENAI_API_KEY") is not None):
-    token = os.environ["AZURE_OPENAI_API_KEY"]
-    endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
-    print("Using Azure OpenAI Token for authentication")
-
-async_openai_client = AsyncOpenAI(
-    base_url=endpoint,
-    api_key=token
-)
-
 completion_model_name = os.environ.get("COMPLETION_DEPLOYMENT_NAME")
 medium_model_name = os.environ.get("MEDIUM_DEPLOYMENT_MODEL_NAME")
 small_model_name = os.environ.get("SMALL_DEPLOYMENT_MODEL_NAME")
 
-completion_client=OpenAIChatClient(
-    model_id = completion_model_name,
-    api_key=token,
-    async_client = async_openai_client
-)
+completion_client=create_chat_client(completion_model_name)
 
-medium_client=OpenAIChatClient(
-    model_id = medium_model_name,
-    api_key=token,
-    async_client = async_openai_client
-)
+medium_client=create_chat_client(medium_model_name)
 
-small_client=OpenAIChatClient(
-    model_id = small_model_name,
-    api_key=token,
-    async_client = async_openai_client
-)
-
+small_client=create_chat_client(small_model_name)
 
 @ai_function(approval_mode="always_require")
 def submit_payment(

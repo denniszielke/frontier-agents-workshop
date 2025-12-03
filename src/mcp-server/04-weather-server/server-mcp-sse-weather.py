@@ -165,7 +165,7 @@ async def check_mcp(mcp: FastMCP):
 if __name__ == "__main__":
     try:
         asyncio.run(check_mcp(mcp))
-        uvicorn.run(streamable_http_app, host="0.0.0.0", port=8003)
+        uvicorn.run(streamable_http_app, host="0.0.0.0", port=8001)
     except KeyboardInterrupt:
         print("\nProgram interrupted by user. Cleaning up...")
     except Exception as e:

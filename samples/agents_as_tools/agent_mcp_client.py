@@ -1,14 +1,18 @@
 # Copyright (c) Microsoft. All rights reserved.
+import sys
+from pathlib import Path
 
+# Add the project root to the path so we can import from samples.shared
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from samples.shared.model_client import create_chat_client
 import asyncio
 import os
 
 from typing import TYPE_CHECKING
 
 from agent_framework import ChatAgent, HostedMCPTool
-from agent_framework.openai import OpenAIChatClient
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
 
 load_dotenv()
 
@@ -36,33 +40,9 @@ To run this sample:
 if TYPE_CHECKING:
     from agent_framework import AgentProtocol
 
+medium_model_name = os.environ.get("MEDIUM_DEPLOYMENT_MODEL_NAME")
 
-def _create_openai_client() -> OpenAIChatClient:
-    """Create an `OpenAIChatClient` using either GitHub or Azure credentials."""
-
-    if os.environ.get("GITHUB_TOKEN") is not None:
-        token = os.environ["GITHUB_TOKEN"]
-        endpoint = "https://models.github.ai/inference"
-        model_name = os.environ.get("SMALL_DEPLOYMENT_MODEL_NAME")
-        print("Using GitHub Token for authentication")
-    elif os.environ.get("AZURE_OPENAI_API_KEY") is not None:
-        token = os.environ["AZURE_OPENAI_API_KEY"]
-        endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
-        model_name = os.environ.get("SMALL_DEPLOYMENT_MODEL_NAME")
-        print("Using Azure OpenAI Token for authentication")
-    else:
-        raise RuntimeError(
-            "No model credentials found. Set either GITHUB_TOKEN or AZURE_OPENAI_API_KEY.",
-        )
-
-    async_openai_client = AsyncOpenAI(base_url=endpoint, api_key=token)
-
-    return OpenAIChatClient(
-        model_id=model_name,
-        api_key=token,
-        async_client=async_openai_client,
-    )
-
+medium_client=create_chat_client(medium_model_name)
 
 async def run_simple_mcp_client() -> None:
     """Connect to the local MCP server and run a multi-step conversation.
@@ -76,7 +56,7 @@ async def run_simple_mcp_client() -> None:
     mcp_server_url = os.getenv("LOCAL_MCP_AGENT_SERVER_URL", "http://localhost:8001/sse")
     print(f"Connecting to MCP server at: {mcp_server_url}")
 
-    chat_client = _create_openai_client()
+    chat_client = medium_client
 
     async with ChatAgent(
         chat_client=chat_client,

@@ -1,24 +1,37 @@
 import os
+import logging
 from random import randint
 from typing import Annotated, override
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentSkill,
     TaskArtifactUpdateEvent,
     TaskState,
     TaskStatus,
     TaskStatusUpdateEvent,
 )
 from a2a.utils import new_agent_text_message, new_task, new_text_artifact
-from agent_framework.openai import OpenAIChatClient
+from samples.shared.model_client import create_chat_client as _create_openai_client
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+
 from pydantic import Field
 
 
 load_dotenv()
 
+model_name = os.environ["COMPLETION_DEPLOYMENT_NAME"]
+
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("agent-executor")
 
 def get_weather(
     location: Annotated[str, Field(description="The location to get the weather for.")],
@@ -28,44 +41,55 @@ def get_weather(
     return f"The weather in {location} is {conditions[randint(0, 3)]} with a high of {randint(10, 30)}°C."
 
 
-def _create_openai_client() -> OpenAIChatClient:
-    """Create an OpenAIChatClient similar to samples/simple-agents/basic-agent.py."""
-
-    token: str
-    endpoint: str
-    model_name: str
-
-    if os.environ.get("GITHUB_TOKEN") is not None:
-        token = os.environ["GITHUB_TOKEN"]
-        endpoint = "https://models.github.ai/inference"
-        model_name = os.environ["COMPLETION_DEPLOYMENT_NAME"]
-    elif os.environ.get("AZURE_OPENAI_API_KEY") is not None:
-        token = os.environ["AZURE_OPENAI_API_KEY"]
-        endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
-        model_name = os.environ["COMPLETION_DEPLOYMENT_NAME"]
-    else:
-        raise RuntimeError(
-            "No OpenAI credentials found. Set GITHUB_TOKEN or AZURE_OPENAI_API_KEY."
-        )
-
-    async_openai_client = AsyncOpenAI(
-        base_url=endpoint,
-        api_key=token,
+def weather_agent_card(url: str) -> AgentCard:
+    """Define the agent card for the weather Q&A agent."""
+    skill = AgentSkill(
+        id='answer_weather_questions',
+        name='Answer questions about the weather',
+        description=(
+            'The agent can answer simple questions about the weather '
+            'for given locations using a weather tool.'
+        ),
+        tags=['weather', 'q&a'],
+        examples=[
+            'What is the weather in Amsterdam?',
+            'What is the weather like in Paris and Berlin?',
+        ],
     )
 
-    return OpenAIChatClient(
-        model_id=model_name,
-        api_key=token,
-        async_client=async_openai_client,
+    agent_card = AgentCard(
+        name='Weather Q&A Agent',
+        description=(
+            'A simple weather question answering agent that uses a tool '
+            'to respond with current-like conditions for requested locations.'
+        ),
+        url=f'{url}',
+        version='1.0.0',
+        default_input_modes=['text'],
+        default_output_modes=['text'],
+        capabilities=AgentCapabilities(
+            input_modes=['text'],
+            output_modes=['text'],
+            # The current executor implementation performs a single-turn completion
+            # and returns the final result, so we do not enable streaming here.
+            streaming=False,
+        ),
+        skills=[skill],
+        examples=[
+            'What is the weather in Amsterdam?',
+            'What is the weather like in Paris and Berlin?',
+        ],
     )
+    return agent_card
 
 
-class HelloWorldAgentExecutor(AgentExecutor):
+class WeatherAgentExecutor(AgentExecutor):
     """Simple weather Q&A agent using Microsoft agent framework."""
 
     def __init__(self):
         # Reuse the same authentication logic as the basic agent sample
-        self.agent = _create_openai_client()
+        logging.info("Creating OpenAIChatClient for WeatherAgentExecutor with model %s", model_name)
+        self.agent = _create_openai_client(model_name)
 
     @override
     async def execute(

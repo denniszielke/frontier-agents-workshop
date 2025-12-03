@@ -1,12 +1,17 @@
 # Copyright (c) Microsoft. All rights reserved.
+import sys
+from pathlib import Path
+
+# Add the project root to the path so we can import from samples.shared
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from samples.shared.model_client import create_chat_client
+
 import os
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent, HostedMCPTool
-from agent_framework.openai import OpenAIChatClient
-
-from openai import AsyncOpenAI
+from agent_framework import ChatAgent, HostedMCPTool, MCPStreamableHTTPTool
 
 from dotenv import load_dotenv
 
@@ -19,41 +24,15 @@ This sample demonstrates integrating hosted Model Context Protocol (MCP) tools w
 Azure OpenAI Responses Client, including user approval workflows for function call security.
 """
 
-if (os.environ.get("GITHUB_TOKEN") is not None):
-    token = os.environ["GITHUB_TOKEN"]
-    endpoint = "https://models.github.ai/inference"
-    print("Using GitHub Token for authentication")
-elif (os.environ.get("AZURE_OPENAI_API_KEY") is not None):
-    token = os.environ["AZURE_OPENAI_API_KEY"]
-    endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
-    print("Using Azure OpenAI Token for authentication")
-
-async_openai_client = AsyncOpenAI(
-    base_url=endpoint,
-    api_key=token
-)
-
 completion_model_name = os.environ.get("COMPLETION_DEPLOYMENT_NAME")
 medium_model_name = os.environ.get("MEDIUM_DEPLOYMENT_MODEL_NAME")
 small_model_name = os.environ.get("SMALL_DEPLOYMENT_MODEL_NAME")
 
-completion_client=OpenAIChatClient(
-    model_id = completion_model_name,
-    api_key=token,
-    async_client = async_openai_client
-)
+completion_client=create_chat_client(completion_model_name)
 
-medium_client=OpenAIChatClient(
-    model_id = medium_model_name,
-    api_key=token,
-    async_client = async_openai_client
-)
+medium_client=create_chat_client(medium_model_name)
 
-small_client=OpenAIChatClient(
-    model_id = small_model_name,
-    api_key=token,
-    async_client = async_openai_client
-)
+small_client=create_chat_client(small_model_name)
 
 if TYPE_CHECKING:
     from agent_framework import AgentProtocol, AgentThread
@@ -255,14 +234,48 @@ async def run_hosted_mcp_with_thread_streaming() -> None:
             print(update, end="")
         print("\n")
 
+async def run_remote_mcp_with_thread_streaming() -> None:
+    """Example showing Mcp Tools with approvals using a thread."""
+    print("=== Mcp with approvals and with thread ===")
+    # Tools are provided when creating the agent
+    # The agent can use these tools for any query during its lifetime
+
+    WEATHER_MCP_URL = os.environ.get("WEATHER_MCP_URL", "http://localhost:8001/mcp")
+
+    async with ChatAgent(
+        chat_client=completion_client,
+        name="DocsAgent",
+        instructions="You are a helpful assistant that can help with microsoft documentation questions.",
+        tools= MCPStreamableHTTPTool(
+            name="Weather Server", 
+            url=WEATHER_MCP_URL
+        ),
+    ) as agent:
+        # First query
+        thread = agent.get_new_thread()
+        query1 = "What is the weather in Amsterdam?"
+        print(f"User: {query1}")
+        print(f"{agent.name}: ", end="")
+        async for update in handle_approvals_with_thread_streaming(query1, agent, thread):
+            print(update, end="")
+        print("\n")
+        print("\n=======================================\n")
+        # Second query
+        query2 = "What is the weather in New York?"
+        print(f"User: {query2}")
+        print(f"{agent.name}: ", end="")
+        async for update in handle_approvals_with_thread_streaming(query2, agent, thread):
+            print(update, end="")
+        print("\n")
 
 async def main() -> None:
     print("=== OpenAI Responses Client Agent with Hosted Mcp Tools Examples ===\n")
 
-    await run_hosted_mcp_without_approval()
-    await run_hosted_mcp_without_thread_and_specific_approval()
-    await run_hosted_mcp_with_thread()
-    await run_hosted_mcp_with_thread_streaming()
+    # await run_hosted_mcp_without_approval()
+    # await run_hosted_mcp_without_thread_and_specific_approval()
+    # await run_hosted_mcp_with_thread()
+    # await run_hosted_mcp_with_thread_streaming()
+    await run_remote_mcp_with_thread_streaming()
 
 
 if __name__ == "__main__":

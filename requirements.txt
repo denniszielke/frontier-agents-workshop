@@ -7,6 +7,7 @@ agent-framework-declarative==1.0.0b260128
 agent-framework-devui==1.0.0b260128
 agent-framework-mem0==1.0.0b260128
 azure-ai-evaluation==1.14.0
+opentelemetry-semantic-conventions-ai==0.4.13
 # Requirements File
 a2a-sdk==0.3.22
 ag-ui-protocol==0.1.10

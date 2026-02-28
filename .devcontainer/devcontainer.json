@@ -1,6 +1,6 @@
 {
     "name": "Frontier Agents Workshop",
-    "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
+    "image": "mcr.microsoft.com/devcontainers/python:3-3.12-bookworm",
     "features": {
         "ghcr.io/devcontainers/features/git:1": {},
         "ghcr.io/devcontainers/features/github-cli:1": {},
@@ -8,13 +8,11 @@
         "ghcr.io/devcontainers-extra/features/uv:1": {
             "version": "latest"
         },
-        "ghcr.io/devcontainers/features/docker-in-docker:2.12.4": {},
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {},
         "ghcr.io/devcontainers/features/azure-cli:1": {
             "version": "latest"
         },
-        "ghcr.io/azure/azure-dev/azd": {},
-        "ghcr.io/devcontainers-extra/features/redis-homebrew:1": {},
-        "ghcr.io/42atomys/devcontainers-features/redis-cli:1": {},
+        "ghcr.io/azure/azure-dev/azd": {}
     },
     "customizations": {
         "vscode": {
@@ -23,13 +21,11 @@
                 "github.copilot",
                 "github.copilot-chat",
                 "Upstash.context7-mcp",
-                "ms-azuretools.vscode-azure-mcp-server",
-                "cweijan.vscode-redis-client"
+                "ms-azuretools.vscode-azure-mcp-server"
             ]
         }
     },
     "postCreateCommand": "pip install --user -r requirements.txt && uv tool install specify-cli --from git+https://github.com/github/spec-kit.git && docker pull qdrant/qdrant",
-    "postStartCommand": "sudo sysctl vm.overcommit_memory=1 || true && redis-server --daemonize yes",
     "forwardPorts": [
         8000,
         8080,

@@ -1,6 +1,6 @@
-fastapi==0.121.3
-uvicorn==0.38.0
-python-dotenv==1.2.1
-pydantic==2.12.4
-fastmcp==2.13.1
-pytz==2025.2
+fastapi==0.133.0
+uvicorn==0.47.0
+python-dotenv==1.2.2
+pydantic==2.13.4
+fastmcp==3.3.1
+pytz==2026.2

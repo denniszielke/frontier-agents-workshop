@@ -11,8 +11,8 @@ import asyncio
 from typing import Annotated, List, Literal
 
 import httpx
-from agent_framework import ChatAgent
-from agent_framework.observability import get_tracer, setup_observability
+from agent_framework import Agent
+from agent_framework.observability import get_tracer, configure_otel_providers
 from agent_framework.openai import OpenAIChatClient
 from opentelemetry.trace import SpanKind
 from pydantic import Field
@@ -94,7 +94,7 @@ async def main() -> None:
     print("=== Hacker News Agent (with observability) ===\n")
 
     # Enable tracing / metrics based on environment configuration
-    setup_observability()
+    configure_otel_providers()
 
     tracer = get_tracer()
 
@@ -112,8 +112,8 @@ async def main() -> None:
             span.set_attribute("tool.name", "get_hackernews_story")
             return get_hackernews_story(*args, **kwargs)
 
-    agent = ChatAgent(
-        chat_client=medium_client,
+    agent = Agent(
+        medium_client,
         instructions=(
             "You are a helpful news assistant that uses the provided tools "
             "to fetch and summarize Hacker News stories. When asked about "
@@ -123,7 +123,7 @@ async def main() -> None:
         tools=[get_hn_ids_observed, get_hn_story_observed],
     )
 
-    thread = agent.get_new_thread()
+    session = agent.create_session()
 
     user_queries = [
         "Give me a brief summary of the current top 5 Hacker News stories.",
@@ -133,7 +133,7 @@ async def main() -> None:
 
     for query in user_queries:
         print(f"User: {query}")
-        result = await agent.run(query, thread=thread)
+        result = await agent.run(query, session=session)
         print(f"Agent: {result.text}\n")
 
 

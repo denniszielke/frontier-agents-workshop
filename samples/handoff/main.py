@@ -37,10 +37,8 @@ import asyncio
 import logging
 
 from dotenv import load_dotenv
-from agent_framework import (
-    ChatAgent,
-    HandoffBuilder,
-)
+from agent_framework import Agent
+from agent_framework.orchestrations import HandoffBuilder
 
 # Configure logging to debug level for detailed workflow tracking
 logging.basicConfig(level=logging.DEBUG)
@@ -209,7 +207,8 @@ async def run_handoff_workflow() -> None:
     """
 
     # Define the triage agent (coordinator)
-    triage_agent = ChatAgent(
+    triage_agent = Agent(
+        small_client,
         name="triage_agent",
         description=(
             "Customer support triage agent that collects basic information "
@@ -228,12 +227,12 @@ async def run_handoff_workflow() -> None:
             "\n"
             "Be concise and friendly. Always confirm you understand the issue before handing off."
         ),
-        chat_client=small_client,
         tools=[lookup_order, lookup_invoice],
     )
 
     # Define the billing specialist agent
-    billing_agent = ChatAgent(
+    billing_agent = Agent(
+        medium_client,
         name="billing_agent",
         description=(
             "Billing specialist that handles payment issues, invoices, and refunds."
@@ -250,12 +249,12 @@ async def run_handoff_workflow() -> None:
             "Use your tools to look up invoice details and check refund eligibility. "
             "Be professional and empathetic, especially when dealing with payment disputes."
         ),
-        chat_client=medium_client,
         tools=[lookup_invoice, check_refund_eligibility, lookup_order],
     )
 
     # Define the shipping specialist agent
-    shipping_agent = ChatAgent(
+    shipping_agent = Agent(
+        medium_client,
         name="shipping_agent",
         description=(
             "Shipping specialist that handles delivery, tracking, and shipping issues."
@@ -271,12 +270,12 @@ async def run_handoff_workflow() -> None:
             "Use your tools to look up order and tracking details. "
             "Be clear about delivery timelines and proactive about resolving concerns."
         ),
-        chat_client=medium_client,
         tools=[lookup_order, get_tracking_info],
     )
 
     # Define the compliance/policy agent
-    compliance_agent = ChatAgent(
+    compliance_agent = Agent(
+        completion_client,
         name="compliance_agent",
         description=(
             "Compliance agent that reviews specialist responses to ensure they meet "
@@ -293,7 +292,6 @@ async def run_handoff_workflow() -> None:
             "Be thorough but don't contradict the specialist unless there's a clear policy violation. "
             "Your goal is to add a final layer of quality assurance."
         ),
-        chat_client=completion_client,
     )
 
     print("\n---------------------------------------------------------------------")
@@ -329,7 +327,7 @@ async def run_handoff_workflow() -> None:
         print("\nRunning Handoff workflow...\n")
         workflow_agent = workflow.as_agent(name="SupportWorkflowAgent")
         
-        async for response in workflow_agent.run_stream(task):
+        async for response in workflow_agent.run(task, stream=True):
             # Print streaming response text
             print(response.text, end="", flush=True)
 

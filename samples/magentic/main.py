@@ -31,10 +31,8 @@ from datetime import datetime
 
 import pytz
 from dotenv import load_dotenv
-from agent_framework import (
-    ChatAgent,
-    MagenticBuilder,
-)
+from agent_framework import Agent
+from agent_framework.orchestrations import MagenticBuilder
 
 # Configure logging to debug level for detailed workflow tracking
 logging.basicConfig(level=logging.DEBUG)
@@ -162,7 +160,8 @@ async def run_magentic_workflow() -> None:
         - chef_agent: recommends meals based on time, location, ingredients
     """
 
-    users_agent = ChatAgent(
+    users_agent = Agent(
+        small_client,
         name="users_agent",
         description=(
             "Assistant focused on user-specific information: identity, "
@@ -183,7 +182,6 @@ async def run_magentic_workflow() -> None:
             "exact budget number in euros, and all dining preferences when "
             "asked about them."
         ),
-        chat_client=small_client,
         tools=[
             get_current_username,
             get_medical_history,
@@ -192,7 +190,8 @@ async def run_magentic_workflow() -> None:
         ],
     )
 
-    manager_agent = ChatAgent(
+    manager_agent = Agent(
+        medium_client,
         name="manager_agent",
         description=(
             "Assistant that manages contextual information about the user's "
@@ -208,11 +207,11 @@ async def run_magentic_workflow() -> None:
             "return short factual statements like 'The user is in X' or "
             "'The local time in X is Y'."
         ),
-        chat_client=medium_client,
         tools=[get_current_location_of_user, get_current_time],
     )
 
-    chef_agent = ChatAgent(
+    chef_agent = Agent(
+        small_client,
         name="chef_agent",
         description=(
             "A helpful assistant that can suggest meals and dishes for the right "
@@ -224,12 +223,12 @@ async def run_magentic_workflow() -> None:
             "ingredients and user preferences. Always ask for food preferences "
             "and allergies. Never suggest a dish until allergies are clarified." 
         ),
-        chat_client=small_client,
         tools=[get_available_ingredients, get_weather],
     )
 
     # Create a manager agent for orchestration
-    orchestrator_agent = ChatAgent(
+    orchestrator_agent = Agent(
+        completion_client,
         name="MagenticManager",
         description="Orchestrator that coordinates the user, location, and chef agents",
         instructions=(
@@ -237,9 +236,7 @@ async def run_magentic_workflow() -> None:
             "First gather user info (identity, allergies, budget, preferences), "
             "then get location and time context, and finally have the chef recommend meals."
         ),
-        chat_client=completion_client,
     )
-
 
     print("\n---------------------------------------------------------------------")
     print("\nBuilding Magentic Workflow...")
@@ -267,7 +264,7 @@ async def run_magentic_workflow() -> None:
         # Wrap the workflow as an agent for composition scenarios
         print("\nWrapping workflow as an agent and running...")
         workflow_agent = workflow.as_agent(name="MagenticWorkflowAgent")
-        async for response in workflow_agent.run_stream(task):
+        async for response in workflow_agent.run(task, stream=True):
             # Print streaming response text
             print(response.text, end="", flush=True)
 

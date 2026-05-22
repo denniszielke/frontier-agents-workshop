@@ -39,7 +39,7 @@ async def main():
 
     # create the AgentFactory with a chat client and bindings
     agent_factory = AgentFactory(
-        chat_client=medium_client,
+        client=medium_client,
         bindings={"get_weather": get_weather},
     )
     # create the agent from the yaml

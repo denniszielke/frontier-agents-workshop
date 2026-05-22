@@ -8,16 +8,16 @@ from typing import Any, Annotated, List, Literal
 
 import httpx
 from agent_framework import (
-    AgentRunResponse,
-    AgentRunResponseUpdate,
-    AgentThread,
+    AgentResponse,
+    AgentResponseUpdate,
+    AgentSession,
     BaseAgent,
-    ChatMessage,
+    Message,
+    Content,
     Role,
-    TextContent,
 )
-from agent_framework.observability import get_tracer, setup_observability
-from agent_framework.openai import OpenAIChatClient
+from agent_framework.observability import get_tracer, configure_otel_providers
+from agent_framework.openai import OpenAIChatCompletionClient
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from opentelemetry.trace import SpanKind
@@ -34,6 +34,9 @@ that can call tools to fetch and summarize top stories.
 load_dotenv()
 
 logger = logging.getLogger("news_agent")
+
+# Configure OTLP exporters once at module level (instrumentation is on by default in 1.6+)
+configure_otel_providers()
 
 if (os.environ.get("GITHUB_TOKEN") is not None):
     token = os.environ["GITHUB_TOKEN"]
@@ -53,20 +56,20 @@ completion_model_name = os.environ.get("COMPLETION_DEPLOYMENT_NAME")
 medium_model_name = os.environ.get("MEDIUM_DEPLOYMENT_MODEL_NAME")
 small_model_name = os.environ.get("SMALL_DEPLOYMENT_MODEL_NAME")
 
-completion_client=OpenAIChatClient(
-    model_id = completion_model_name,
+completion_client=OpenAIChatCompletionClient(
+    model = completion_model_name,
     api_key=token,
     async_client = async_openai_client
 )
 
-medium_client=OpenAIChatClient(
-    model_id = medium_model_name,
+medium_client=OpenAIChatCompletionClient(
+    model = medium_model_name,
     api_key=token,
     async_client = async_openai_client
 )
 
-small_client=OpenAIChatClient(
-    model_id = small_model_name,
+small_client=OpenAIChatCompletionClient(
+    model = small_model_name,
     api_key=token,
     async_client = async_openai_client
 )
@@ -153,11 +156,12 @@ class NewsAgent(BaseAgent):
 
     async def run(
         self,
-        messages: str | ChatMessage | list[str] | list[ChatMessage] | None = None,
+        messages: str | Message | list[str] | list[Message] | None = None,
         *,
-        thread: AgentThread | None = None,
+        stream: bool = False,
+        session: AgentSession | None = None,
         **kwargs: Any,
-    ) -> AgentRunResponse:
+    ) -> AgentResponse:
         logger.info("NewsAgent.run called", extra={"agent_id": self.id})
 
         normalized_messages = self._normalize_messages(messages)
@@ -173,8 +177,6 @@ class NewsAgent(BaseAgent):
 
         logger.info("NewsAgent handling query", extra={"agent_id": self.id, "user_text": user_text})
 
-        # Set up observability tools
-        setup_observability()
         tracer = get_tracer()
 
         async def get_hn_ids_observed(*args, **kwargs):
@@ -203,24 +205,20 @@ class NewsAgent(BaseAgent):
             extra={"agent_id": self.id, "response_preview": reply_text[:200]},
         )
 
-        response_message = ChatMessage(
+        response_message = Message(
             role=Role.ASSISTANT,
-            contents=[TextContent(text=reply_text)],
+            contents=[Content('text', text=reply_text)],
         )
 
-        # Notify the thread of new messages if provided
-        if thread is not None:
-            await self._notify_thread_of_new_messages(thread, normalized_messages, response_message)
-
-        return AgentRunResponse(messages=[response_message])
+        return AgentResponse(messages=[response_message])
 
     async def run_stream(
         self,
-        messages: str | ChatMessage | list[str] | list[ChatMessage] | None = None,
+        messages: str | Message | list[str] | list[Message] | None = None,
         *,
-        thread: AgentThread | None = None,
+        session: AgentSession | None = None,
         **kwargs: Any,
-    ) -> AsyncIterable[AgentRunResponseUpdate]:
+    ) -> AsyncIterable[AgentResponseUpdate]:
         logger.info("NewsAgent.run_stream called", extra={"agent_id": self.id})
 
         normalized_messages = self._normalize_messages(messages)
@@ -234,8 +232,6 @@ class NewsAgent(BaseAgent):
             last_message = normalized_messages[-1]
             user_text = last_message.text or "Tell me about the latest Hacker News stories."
 
-        # Set up observability tools
-        setup_observability()
         tracer = get_tracer()
 
         async def get_hn_ids_observed(*args, **kwargs):
@@ -264,22 +260,17 @@ class NewsAgent(BaseAgent):
                     "NewsAgent streaming chunk",
                     extra={"agent_id": self.id, "chunk_length": len(chunk.text)},
                 )
-                yield AgentRunResponseUpdate(
-                    contents=[TextContent(text=chunk.text)],
+                yield AgentResponseUpdate(
+                    contents=[Content('text', text=chunk.text)],
                     role=Role.ASSISTANT,
                 )
 
-        # Notify the thread of the complete response if provided
-        if thread is not None and full_text_chunks:
-            complete_response = ChatMessage(
-                role=Role.ASSISTANT,
-                contents=[TextContent(text="".join(full_text_chunks))],
-            )
+        # Log streaming completion
+        if full_text_chunks:
             logger.info(
                 "NewsAgent streaming complete",
                 extra={"agent_id": self.id, "total_length": len("".join(full_text_chunks))},
             )
-            await self._notify_thread_of_new_messages(thread, normalized_messages, complete_response)
 
 
 async def main() -> None:
@@ -299,12 +290,11 @@ async def main() -> None:
     # Test non-streaming
     print(f"Agent Name: {news_agent.name}")
     print(f"Agent ID: {news_agent.id}")
-    print(f"Display Name: {news_agent.display_name}")
 
     query = "Give me a brief summary of the current top 5 Hacker News stories."
     print(f"\nUser: {query}")
     result = await news_agent.run(query)
-    print(f"Agent: {result.messages[0].text}")
+    print(f"Agent: {result.text}")
 
     # Test streaming
     query2 = "Now, focus on any stories related to AI or machine learning."
@@ -315,26 +305,19 @@ async def main() -> None:
             print(chunk.text, end="", flush=True)
     print()
 
-    # Example with threads
-    print("\n--- Using NewsAgent with Thread ---")
-    thread = news_agent.get_new_thread()
+    # Example with sessions
+    print("\n--- Using NewsAgent with Session ---")
+    session = news_agent.create_session()
 
     # First message
-    result1 = await news_agent.run("Give me the top 3 Hacker News stories.", thread=thread)
+    result1 = await news_agent.run("Give me the top 3 Hacker News stories.", session=session)
     print("User: Give me the top 3 Hacker News stories.")
-    print(f"Agent: {result1.messages[0].text}")
+    print(f"Agent: {result1.text}")
 
-    # Second message in same thread
-    result2 = await news_agent.run("Remind me which story had the highest score.", thread=thread)
+    # Second message in same session
+    result2 = await news_agent.run("Remind me which story had the highest score.", session=session)
     print("User: Remind me which story had the highest score.")
-    print(f"Agent: {result2.messages[0].text}")
-
-    # Check conversation history
-    if thread.message_store:
-        messages = await thread.message_store.list_messages()
-        print(f"\nThread contains {len(messages)} messages in history")
-    else:
-        print("\nThread has no message store configured")
+    print(f"Agent: {result2.text}")
 
 
 if __name__ == "__main__":

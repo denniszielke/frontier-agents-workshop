@@ -2,34 +2,23 @@ import click
 import uvicorn
 import sys
 import os
+from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from a2a.server.agent_execution import AgentExecutor
-from a2a.server.apps import A2AStarletteApplication
+from a2a.server.routes import create_rest_routes, create_jsonrpc_routes, create_agent_card_routes
 from a2a.server.request_handlers.default_request_handler import (
-    DefaultRequestHandler,
+    LegacyRequestHandler,
 )
 from a2a.server.tasks.inmemory_task_store import InMemoryTaskStore
 from a2a.types import (
-    GetTaskRequest,
-    GetTaskResponse,
     SendMessageRequest,
     SendMessageResponse,
 )
 from samples.a2a_communication.server.weather_agent_executor import WeatherAgentExecutor, weather_agent_card
 
-class A2ARequestHandler(DefaultRequestHandler):
+class A2ARequestHandler(LegacyRequestHandler):
     """A2A Request Handler for the A2A Repo Agent."""
-
-    def __init__(
-        self, agent_executor: AgentExecutor, task_store: InMemoryTaskStore
-    ):
-        super().__init__(agent_executor, task_store)
-
-    async def on_get_task(
-        self, request: GetTaskRequest, *args, **kwargs
-    ) -> GetTaskResponse:
-        return await super().on_get_task(request, *args, **kwargs)
 
     async def on_message_send(
         self, request: SendMessageRequest, *args, **kwargs
@@ -45,10 +34,6 @@ def main(host: str, port: int):
 
 
     task_store = InMemoryTaskStore()
-    request_handler = A2ARequestHandler(
-        agent_executor=WeatherAgentExecutor(),
-        task_store=task_store,
-    )
 
     if os.environ.get("CONTAINER_APP_NAME") and os.environ.get("CONTAINER_APP_ENV_DNS_SUFFIX"):
         url = f'https://{os.environ["CONTAINER_APP_NAME"]}.{os.environ["CONTAINER_APP_ENV_DNS_SUFFIX"]}'
@@ -57,17 +42,22 @@ def main(host: str, port: int):
     else:
         url = f'http://{host}:{port}/'
 
-    server = A2AStarletteApplication(
-        agent_card=weather_agent_card(url=url), http_handler=request_handler
+    agent_card = weather_agent_card(url=url)
+
+    request_handler = A2ARequestHandler(
+        agent_executor=WeatherAgentExecutor(),
+        task_store=task_store,
+        agent_card=agent_card,
     )
 
-    app = server.build()
+    routes = create_agent_card_routes(agent_card) + create_jsonrpc_routes(request_handler, rpc_url="/") + create_rest_routes(request_handler)
 
     async def healthz(request):
         return JSONResponse({"status": "ok"})
 
-    app.router.routes.append(Route("/_healthz", endpoint=healthz))
+    routes.append(Route("/_healthz", endpoint=healthz))
 
+    app = Starlette(routes=routes)
 
     uvicorn.run(app, host=host, port=port)
 

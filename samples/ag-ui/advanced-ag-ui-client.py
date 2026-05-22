@@ -12,9 +12,8 @@ This example demonstrates advanced AGUIChatClient features including:
 import asyncio
 import os
 
-from agent_framework import tool
+from agent_framework import Message, tool
 from agent_framework.ag_ui import AGUIChatClient
-from agent_framework import tool
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -67,19 +66,17 @@ async def streaming_example(client: AGUIChatClient, thread_id: str | None = None
     print("STREAMING EXAMPLE")
     print("=" * 60)
 
-    metadata = {"thread_id": thread_id} if thread_id else None
+    options = {"metadata": {"thread_id": thread_id}} if thread_id else None
 
     print("\nUser: Tell me a short joke\n")
     print("Assistant: ", end="", flush=True)
 
-    async for update in client.get_streaming_response("Tell me a short joke", metadata=metadata):
+    async for update in client.get_response([Message("user", ["Tell me a short joke"])], stream=True, options=options):
         if not thread_id and update.additional_properties:
             thread_id = update.additional_properties.get("thread_id")
 
-        # from agent_framework import TextContent
-
         for content in update.contents:
-            if content.text:
+            if hasattr(content, "text") and content.text:
                 print(content.text, end="", flush=True)
 
     print("\n")
@@ -92,11 +89,11 @@ async def non_streaming_example(client: AGUIChatClient, thread_id: str | None = 
     print("NON-STREAMING EXAMPLE")
     print("=" * 60)
 
-    metadata = {"thread_id": thread_id} if thread_id else None
+    options = {"metadata": {"thread_id": thread_id}} if thread_id else None
 
     print("\nUser: What is 2 + 2?\n")
 
-    response = await client.get_response("What is 2 + 2?", metadata=metadata)
+    response = await client.get_response([Message("user", ["What is 2 + 2?"])], options=options)
 
     print(f"Assistant: {response.text}")
 
@@ -128,25 +125,23 @@ async def tool_example(client: AGUIChatClient, thread_id: str | None = None):
     print("TOOL DEFINITION EXAMPLE")
     print("=" * 60)
 
-    metadata = {"thread_id": thread_id} if thread_id else None
+    options = {"metadata": {"thread_id": thread_id}, "tools": [get_weather, calculate]} if thread_id else {"tools": [get_weather, calculate]}
 
     print("\nUser: What's the weather in Seattle?\n")
     print("Sending tool definitions to server...")
     print("(Server must be configured with matching tools to execute them)\n")
 
     response = await client.get_response(
-        "What's the weather in Seattle?", tools=[get_weather, calculate], metadata=metadata
+        [Message("user", ["What's the weather in Seattle?"])], options=options
     )
 
     print(f"Assistant: {response.text}")
 
     # Show tool calls if any
-    from agent_framework import FunctionCallContent
-
     tool_called = False
     for message in response.messages:
         for content in message.contents:
-            if isinstance(content, FunctionCallContent):
+            if content.type == "function_call":
                 print(f"\n[Tool Called: {content.name}]")
                 tool_called = True
 
@@ -172,14 +167,14 @@ async def conversation_example(client: AGUIChatClient):
 
     # First turn
     print("User: My name is Alice\n")
-    response1 = await client.get_response("My name is Alice")
+    response1 = await client.get_response([Message("user", ["My name is Alice"])])
     print(f"Assistant: {response1.text}")
     thread_id = response1.additional_properties.get("thread_id")
     print(f"\n[Thread: {thread_id}]")
 
     # Second turn - using same thread
     print("\nUser: What's my name?\n")
-    response2 = await client.get_response("What's my name?", metadata={"thread_id": thread_id})
+    response2 = await client.get_response([Message("user", ["What's my name?"])], options={"metadata": {"thread_id": thread_id}})
     print(f"Assistant: {response2.text}")
 
     # Check if context was maintained
@@ -189,7 +184,7 @@ async def conversation_example(client: AGUIChatClient):
     # Third turn
     print("\nUser: Can you also tell me what 10 * 5 is?\n")
     response3 = await client.get_response(
-        "Can you also tell me what 10 * 5 is?", metadata={"thread_id": thread_id}, tools=[calculate]
+        [Message("user", ["Can you also tell me what 10 * 5 is?"])], options={"metadata": {"thread_id": thread_id}, "tools": [calculate]}
     )
     print(f"Assistant: {response3.text}")
 

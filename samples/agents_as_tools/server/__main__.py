@@ -18,13 +18,13 @@ from samples.agents_as_tools.server.weather_agent import WeatherAgent
 from samples.agents_as_tools.server.news_agent import NewsAgent
 
 from agent_framework import (
-    AgentRunResponse,
-    AgentRunResponseUpdate,
-    AgentThread,
+    AgentResponse,
+    AgentResponseUpdate,
+    AgentSession,
     BaseAgent,
-    ChatMessage,
+    Message,
     Role,
-    TextContent,
+    Content,
 )
 
 logging.basicConfig(
@@ -71,7 +71,7 @@ def initialize_agents() -> None:
     agent_id = "weather-agent"
     SUPPORTED_AGENTS[agent_id] = AgentInfo(
         agent_id=agent_id,
-        name=weather_agent.display_name,
+        name=weather_agent.name,
         description=weather_agent.description or "Weather agent",
         agent=weather_agent,
     )
@@ -83,7 +83,7 @@ def initialize_agents() -> None:
     agent_id = "news-agent"
     SUPPORTED_AGENTS[agent_id] = AgentInfo(
         agent_id=agent_id,
-        name=news_agent.display_name,
+        name=news_agent.name,
         description=news_agent.description or "News agent",
         agent=news_agent,
     )
@@ -128,7 +128,7 @@ async def connect_agent(agent_id: str, query: str) -> str:
     # For now, we just run the agent without threading; could be extended.
     try:
         result = await agent_info.agent.run(query)
-        text = result.messages[0].text if result.messages else "(no response)"
+        text = result.text or "(no response)"
         response = f"## Response from {agent_info.name}\n\n{text}"
         logger.info("connect_agent succeeded", extra={"agent_id": agent_id})
         return response
@@ -154,7 +154,7 @@ async def query_default_agent(query: str) -> str:
 
     try:
         result = await agent_info.agent.run(query)
-        text = result.messages[0].text if result.messages else "(no response)"
+        text = result.text or "(no response)"
         response = f"## Response from Default Agent ({agent_info.name})\n\n{text}"
         logger.info("query_default_agent succeeded", extra={"default_agent_id": DEFAULT_AGENT_ID})
         return response

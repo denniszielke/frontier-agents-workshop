@@ -37,12 +37,12 @@ from agent_framework import (
     WorkflowContext,
     AgentExecutorRequest,
     AgentExecutorResponse,
-    ChatMessage,
-    Role,
+    Message,
+    ChatOptions,
 )
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from agent_framework import ChatAgent
+from agent_framework import Agent
 
 # ============================================================================
 # Pydantic Models
@@ -112,18 +112,18 @@ completion_client=create_chat_client(completion_model_name)
 medium_client=create_chat_client(medium_model_name)
 small_client=create_chat_client(small_model_name)    
 
-intent_agent = ChatAgent(
+intent_agent = Agent(
+    completion_client,
     instructions=INTENT_PROMPT,
-    response_format=IntentResult,
     name="intent_extractor",
-    chat_client=completion_client,
+    default_options=ChatOptions(response_format=IntentResult),
 )
 
-response_agent = ChatAgent(
+response_agent = Agent(
+    medium_client,
     instructions=RESPONSE_PROMPT,
-    response_format=ResponseResult,
     name="response_generator",
-    chat_client=medium_client,
+    default_options=ChatOptions(response_format=ResponseResult),
 )
 
 
@@ -135,10 +135,10 @@ response_agent = ChatAgent(
 async def start(message: str, ctx: WorkflowContext) -> None:
     """Entry point - forward message to intent agent."""
     print(f"\n Step 1: Storing message")
-    await ctx.set_shared_state("message", message)
+    ctx.set_state("message", message)
     print(f"→ Forwarding to intent_agent")
     await ctx.send_message(AgentExecutorRequest(
-        messages=[ChatMessage(role=Role.USER, content=message)],
+        messages=[Message(role="user", contents=[message])],
         should_respond=True
     ))
 
@@ -147,7 +147,7 @@ async def start(message: str, ctx: WorkflowContext) -> None:
 async def bridge(resp: AgentExecutorResponse, ctx: WorkflowContext) -> None:
     """Bridge intent result to response agent."""
     extraction = json.loads(resp.agent_response.text)
-    message = await ctx.get_shared_state("message")
+    message = ctx.get_state("message")
     
     print(f"\n Step 2: Intent extracted")
     print(f"   Intent: {extraction['intent']}")
@@ -160,7 +160,7 @@ Missing Info: {', '.join(extraction.get('missing_info', [])) or 'none'}"""
     
     print(f"→ Forwarding to response_agent")
     await ctx.send_message(AgentExecutorRequest(
-        messages=[ChatMessage(role=Role.USER, content=context)],
+        messages=[Message(role="user", contents=[context])],
         should_respond=True
     ))
 
@@ -182,8 +182,7 @@ async def output(resp: AgentExecutorResponse, ctx: WorkflowContext) -> None:
 # ============================================================================
 
 workflow = (
-    WorkflowBuilder()
-    .set_start_executor(start)
+    WorkflowBuilder(start_executor=start)
     .add_edge(start, intent_agent)
     .add_edge(intent_agent, bridge)
     .add_edge(bridge, response_agent)
@@ -192,36 +191,23 @@ workflow = (
 )
 
 
-async def main():
-    if len(sys.argv) < 2:
-        print('Usage: python samples/workflows/shared-state.py "message"')
-        sys.exit(1)
+def main():
+    """Launch the shared-state workflow in DevUI."""
+    import logging
 
-    message = sys.argv[1]
+    from agent_framework.devui import serve
 
-    resources_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.realpath("__file__"))),
-        "resources",
-        message
-    )
-    print(f"Loading message from: {resources_path}")
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logger = logging.getLogger(__name__)
 
-    if os.path.exists(resources_path):
-        with open(resources_path, encoding="utf-8") as f:
-            message = f.read()
-        print(f"✅ Loaded email from {resources_path}")
-    else:
-        print(f"⚠️  Resource not found at {resources_path}, using input message directly.")
+    logger.info("Starting Agent Workflow (Customer Support with Shared State)")
+    logger.info("Available at: http://localhost:8093")
+    logger.info("\nThis workflow demonstrates:")
+    logger.info("- Shared state passing between executor functions")
+    logger.info("- Workflow: intent_extractor → bridge → response_generator → output")
 
-    
-    print(f"\n{'='*60}")
-    print(f"MINIMAL CUSTOMER SUPPORT WORKFLOW")
-    print(f"{'='*60}")
-    print(f"Message: {message}")
-    print(f"{'='*60}")
-    
-    await workflow.run(message)
+    serve(entities=[workflow], port=8093, auto_open=True, auth_enabled=False)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

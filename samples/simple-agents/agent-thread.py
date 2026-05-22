@@ -12,7 +12,7 @@ import asyncio
 from random import randint
 from typing import Annotated
 
-from agent_framework import AgentThread, ChatAgent, ChatMessageStore
+from agent_framework import AgentSession, Agent, InMemoryHistoryProvider
 from pydantic import Field
 
 from dotenv import load_dotenv
@@ -49,24 +49,24 @@ async def example_with_automatic_thread_creation() -> None:
     """Example showing automatic thread creation (service-managed thread)."""
     print("=== Automatic Thread Creation Example ===")
 
-    agent = ChatAgent(
-        chat_client=completion_client,
+    agent = Agent(
+        client=completion_client,
         instructions="You are a helpful weather agent.",
         tools=get_weather,
     )
 
-    # First conversation - no thread provided, will be created automatically
+    # First conversation - no session provided, will be created automatically
     query1 = "What's the weather like in Seattle?"
     print(f"User: {query1}")
     result1 = await agent.run(query1)
     print(f"Agent: {result1.text}")
 
-    # Second conversation - still no thread provided, will create another new thread
+    # Second conversation - still no session provided, will create another new session
     query2 = "What was the last city I asked about?"
     print(f"\nUser: {query2}")
     result2 = await agent.run(query2)
     print(f"Agent: {result2.text}")
-    print("Note: Each call creates a separate thread, so the agent doesn't remember previous context.\n")
+    print("Note: Each call creates a separate session, so the agent doesn't remember previous context.\n")
 
 
 async def example_with_thread_persistence() -> None:
@@ -74,86 +74,79 @@ async def example_with_thread_persistence() -> None:
     print("=== Thread Persistence Example ===")
     print("Using the same thread across multiple conversations to maintain context.\n")
 
-    agent = ChatAgent(
-        chat_client=medium_client,
+    agent = Agent(
+        client=medium_client,
         instructions="You are a helpful weather agent.",
         tools=get_weather,
     )
 
-    # Create a new thread that will be reused
-    thread = agent.get_new_thread()
+    # Create a new session that will be reused
+    session = agent.create_session()
 
     # First conversation
     query1 = "What's the weather like in Tokyo?"
     print(f"User: {query1}")
-    result1 = await agent.run(query1, thread=thread)
+    result1 = await agent.run(query1, session=session)
     print(f"Agent: {result1.text}")
 
-    # Second conversation using the same thread - maintains context
+    # Second conversation using the same session - maintains context
     query2 = "How about London?"
     print(f"\nUser: {query2}")
-    result2 = await agent.run(query2, thread=thread)
+    result2 = await agent.run(query2, session=session)
     print(f"Agent: {result2.text}")
 
     # Third conversation - agent should remember both previous cities
     query3 = "Which of the cities I asked about has better weather?"
     print(f"\nUser: {query3}")
-    result3 = await agent.run(query3, thread=thread)
+    result3 = await agent.run(query3, session=session)
     print(f"Agent: {result3.text}")
-    print("Note: The agent remembers context from previous messages in the same thread.\n")
+    print("Note: The agent remembers context from previous messages in the same session.\n")
 
 
 async def example_with_existing_thread_messages() -> None:
     """Example showing how to work with existing thread messages for OpenAI."""
     print("=== Existing Thread Messages Example ===")
 
-    agent = ChatAgent(
-        chat_client=small_client,
+    agent = Agent(
+        client=small_client,
         instructions="You are a helpful weather agent.",
         tools=get_weather,
     )
 
     # Start a conversation and build up message history
-    thread = agent.get_new_thread()
+    session = agent.create_session()
 
     query1 = "What's the weather in Paris?"
     print(f"User: {query1}")
-    result1 = await agent.run(query1, thread=thread)
+    result1 = await agent.run(query1, session=session)
     print(f"Agent: {result1.text}")
 
-    # The thread now contains the conversation history in memory
-    if thread.message_store:
-        messages = await thread.message_store.list_messages()
-        print(f"Thread contains {len(messages or [])} messages")
+    print("\n--- Continuing with the same session in a new agent instance ---")
 
-    print("\n--- Continuing with the same thread in a new agent instance ---")
-
-    # Create a new agent instance but use the existing thread with its message history
-    new_agent = ChatAgent(
-        chat_client=small_client,
+    # Create a new agent instance but use the existing session with its message history
+    new_agent = Agent(
+        client=small_client,
         instructions="You are a helpful weather agent.",
         tools=get_weather,
     )
 
-    # Use the same thread object which contains the conversation history
+    # Use the same session object which contains the conversation history
     query2 = "What was the last city I asked about?"
     print(f"User: {query2}")
-    result2 = await new_agent.run(query2, thread=thread)
+    result2 = await new_agent.run(query2, session=session)
     print(f"Agent: {result2.text}")
-    print("Note: The agent continues the conversation using the local message history.\n")
+    print("Note: The agent continues the conversation using the session history.\n")
 
-    print("\n--- Alternative: Creating a new thread from existing messages ---")
+    print("\n--- Alternative: Creating a new session ---")
 
-    # You can also create a new thread from existing messages
-    messages = await thread.message_store.list_messages() if thread.message_store else []
-
-    new_thread = AgentThread(message_store=ChatMessageStore(messages))
+    # You can also create a new session
+    new_session = new_agent.create_session()
 
     query3 = "How does the Paris weather compare to London?"
     print(f"User: {query3}")
-    result3 = await new_agent.run(query3, thread=new_thread)
+    result3 = await new_agent.run(query3, session=new_session)
     print(f"Agent: {result3.text}")
-    print("Note: This creates a new thread with the same conversation history.\n")
+    print("Note: This creates a new session without previous conversation history.\n")
 
 
 async def main() -> None:

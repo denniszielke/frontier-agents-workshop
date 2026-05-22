@@ -11,7 +11,7 @@ import os
 
 from typing import TYPE_CHECKING
 
-from agent_framework import ChatAgent, HostedMCPTool
+from agent_framework import Agent, MCPStreamableHTTPTool
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,7 +38,7 @@ To run this sample:
 
 
 if TYPE_CHECKING:
-    from agent_framework import AgentProtocol
+    from agent_framework import BaseAgent
 
 medium_model_name = os.environ.get("MEDIUM_DEPLOYMENT_MODEL_NAME")
 
@@ -51,22 +51,22 @@ async def run_simple_mcp_client() -> None:
     This client drives multiple turns so the agent can call tools across steps.
     """
 
-    from agent_framework import ChatMessage
+    from agent_framework import Message
 
     mcp_server_url = os.getenv("LOCAL_MCP_AGENT_SERVER_URL", "http://localhost:8001/sse")
     print(f"Connecting to MCP server at: {mcp_server_url}")
 
     chat_client = medium_client
 
-    async with ChatAgent(
-        chat_client=chat_client,
+    async with Agent(
+        client=chat_client,
         name="LocalMCPClient",
         instructions=(
             "You are a helpful assistant that can call tools on a local "
             "MCP server exposing a set of helpful agents. When appropriate, call "
             "`query_default_agent` to answer questions."
         ),
-        tools=HostedMCPTool(
+        tools=MCPStreamableHTTPTool(
             name="Local Agent MCP",
             url=mcp_server_url,
             approval_mode="never_require",
@@ -74,7 +74,7 @@ async def run_simple_mcp_client() -> None:
     ) as agent:
         # Maintain an explicit conversation history so the agent can reason
         # across multiple steps and perform multiple tool calls.
-        messages: list[ChatMessage] = []
+        messages: list[Message] = []
 
         def print_turn_header(step: int, user_text: str) -> None:
             print("=" * 60)
@@ -83,30 +83,21 @@ async def run_simple_mcp_client() -> None:
         # Step 1: initial question
         user_query_1 = "What is the weather in New York City today?"
         print_turn_header(1, user_query_1)
-        messages.append(ChatMessage(role="user", text=user_query_1))
+        messages.append(Message(role="user", contents=[user_query_1]))
 
         result = await agent.run(messages)
 
         # Print assistant reply
-        print(f"{agent.name}:")
-        for msg in result.messages:
-            if msg.role == "assistant" and msg.text:
-                print(msg.text)
-
-        # Merge result messages into history for the next step
-        messages.extend(result.messages)
+        print(f"{agent.name}: {result.text}")
 
         # Step 2: follow-up question that should reuse context and tools
         user_query_2 = "And what about tomorrow? Please use the same MCP tools."
         print_turn_header(2, user_query_2)
-        messages.append(ChatMessage(role="user", text=user_query_2))
+        messages.append(Message(role="user", contents=[user_query_2]))
 
         result = await agent.run(messages)
 
-        print(f"{agent.name} (follow-up):")
-        for msg in result.messages:
-            if msg.role == "assistant" and msg.text:
-                print(msg.text)
+        print(f"{agent.name} (follow-up): {result.text}")
 
 
 async def main() -> None:

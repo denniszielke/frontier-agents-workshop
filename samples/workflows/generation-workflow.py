@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from samples.shared.model_client import create_chat_client
-from agent_framework import ChatAgent
+from agent_framework import Agent
 
 """Agent Workflow - Content Review with Quality Routing.
 
@@ -25,7 +25,7 @@ Both paths converge at Summarizer for final report.
 import os
 from typing import Any
 
-from agent_framework import AgentExecutorResponse, WorkflowBuilder
+from agent_framework import AgentExecutorResponse, WorkflowBuilder, ChatOptions
 from pydantic import Field
 
 from dotenv import load_dotenv
@@ -60,7 +60,7 @@ def needs_editing(message: Any) -> bool:
     if not isinstance(message, AgentExecutorResponse):
         return False
     try:
-        review = ReviewResult.model_validate_json(message.agent_run_response.text)
+        review = ReviewResult.model_validate_json(message.agent_response.text)
         return review.score < 80
     except Exception:
         return False
@@ -72,25 +72,26 @@ def is_approved(message: Any) -> bool:
     if not isinstance(message, AgentExecutorResponse):
         return True
     try:
-        review = ReviewResult.model_validate_json(message.agent_run_response.text)
+        review = ReviewResult.model_validate_json(message.agent_response.text)
         return review.score >= 80
     except Exception:
         return True
 
 
 # Create Writer agent - generates content
-writer = ChatAgent(
+writer = Agent(
+    small_client,
     name="Writer",
     instructions=(
         "You are an excellent content writer. "
         "Create clear, engaging content based on the user's request. "
         "Focus on clarity, accuracy, and proper structure."
     ),
-    chat_client=small_client,
 )
 
 # Create Reviewer agent - evaluates and provides structured feedback
-reviewer = ChatAgent(
+reviewer = Agent(
+    medium_client,
     name="Reviewer",
     instructions=(
         "You are an expert content reviewer. "
@@ -104,12 +105,12 @@ reviewer = ChatAgent(
         "- feedback: concise, actionable feedback\n"
         "- clarity, completeness, accuracy, structure: individual scores (0-100)"
     ),
-    response_format=ReviewResult,
-    chat_client = medium_client,
+    default_options=ChatOptions(response_format=ReviewResult),
 )
 
 # Create Editor agent - improves content based on feedback
-editor = ChatAgent(
+editor = Agent(
+    completion_client,
     name="Editor",
     instructions=(
         "You are a skilled editor. "
@@ -117,22 +118,22 @@ editor = ChatAgent(
         "Improve the content by addressing all the issues mentioned in the feedback. "
         "Maintain the original intent while enhancing clarity, completeness, accuracy, and structure."
     ),
-    chat_client=completion_client,
 )
 
 # Create Publisher agent - formats content for publication
-publisher = ChatAgent(
+publisher = Agent(
+    small_client,
     name="Publisher",
     instructions=(
         "You are a publishing agent. "
         "You receive either approved content or edited content. "
         "Format it for publication with proper headings and structure."
     ),
-    chat_client=small_client,
 )
 
 # Create Summarizer agent - creates final publication report
-summarizer = ChatAgent(
+summarizer = Agent(
+    small_client,
     name="Summarizer",
     instructions=(
         "You are a summarizer agent. "
@@ -142,7 +143,6 @@ summarizer = ChatAgent(
         "3. Key highlights and takeaways\n"
         "Keep it concise and professional."
     ),
-    chat_client=small_client,
 )
 
 # Build workflow with branching and convergence:
@@ -151,8 +151,7 @@ summarizer = ChatAgent(
 #   - If score < 80: → Editor → Publisher → Summarizer (improvement path)
 # Both paths converge at Summarizer for final report
 workflow = (
-    WorkflowBuilder()
-    .set_start_executor(writer)
+    WorkflowBuilder(start_executor=writer)
     .add_edge(writer, reviewer)
     # Branch 1: High quality (>= 80) goes directly to publisher
     .add_edge(reviewer, publisher, condition=is_approved)
@@ -182,7 +181,7 @@ def main():
     logger.info("- Path 2 (score < 80): Reviewer → Editor → Publisher → Summarizer")
     logger.info("- Both paths converge at Summarizer for final report")
 
-    serve(entities=[workflow], port=8093, auto_open=True)
+    serve(entities=[workflow], port=8093, auto_open=True, auth_enabled=False)
 
 
 if __name__ == "__main__":

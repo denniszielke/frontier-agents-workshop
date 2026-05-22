@@ -11,7 +11,7 @@ import os
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from agent_framework import ChatAgent, HostedMCPTool, MCPStreamableHTTPTool
+from agent_framework import Agent, MCPStreamableHTTPTool
 
 from dotenv import load_dotenv
 
@@ -35,12 +35,12 @@ medium_client=create_chat_client(medium_model_name)
 small_client=create_chat_client(small_model_name)
 
 if TYPE_CHECKING:
-    from agent_framework import AgentProtocol, AgentThread
+    from agent_framework import BaseAgent, AgentSession
 
 
-async def handle_approvals_without_thread(query: str, agent: "AgentProtocol"):
-    """When we don't have a thread, we need to ensure we return with the input, approval request and approval."""
-    from agent_framework import ChatMessage
+async def handle_approvals_without_thread(query: str, agent: "BaseAgent"):
+    """When we don't have a session, we need to ensure we return with the input, approval request and approval."""
+    from agent_framework import Message
 
     result = await agent.run(query)
     while len(result.user_input_requests) > 0:
@@ -50,21 +50,21 @@ async def handle_approvals_without_thread(query: str, agent: "AgentProtocol"):
                 f"User Input Request for function from {agent.name}: {user_input_needed.function_call.name}"
                 f" with arguments: {user_input_needed.function_call.arguments}"
             )
-            new_inputs.append(ChatMessage(role="assistant", contents=[user_input_needed]))
+            new_inputs.append(Message(role="assistant", contents=[user_input_needed]))
             user_approval = input("Approve function call? (y/n): ")
             new_inputs.append(
-                ChatMessage(role="user", contents=[user_input_needed.create_response(user_approval.lower() == "y")])
+                Message(role="user", contents=[user_input_needed.create_response(user_approval.lower() == "y")])
             )
 
         result = await agent.run(new_inputs)
     return result
 
 
-async def handle_approvals_with_thread(query: str, agent: "AgentProtocol", thread: "AgentThread"):
-    """Here we let the thread deal with the previous responses, and we just rerun with the approval."""
-    from agent_framework import ChatMessage
+async def handle_approvals_with_thread(query: str, agent: "BaseAgent", session: "AgentSession"):
+    """Here we let the session deal with the previous responses, and we just rerun with the approval."""
+    from agent_framework import Message
 
-    result = await agent.run(query, thread=thread, store=True)
+    result = await agent.run(query, session=session)
     while len(result.user_input_requests) > 0:
         new_input: list[Any] = []
         for user_input_needed in result.user_input_requests:
@@ -74,25 +74,25 @@ async def handle_approvals_with_thread(query: str, agent: "AgentProtocol", threa
             )
             user_approval = input("Approve function call? (y/n): ")
             new_input.append(
-                ChatMessage(
+                Message(
                     role="user",
                     contents=[user_input_needed.create_response(user_approval.lower() == "y")],
                 )
             )
-        result = await agent.run(new_input, thread=thread, store=True)
+        result = await agent.run(new_input, session=session)
     return result
 
 
-async def handle_approvals_with_thread_streaming(query: str, agent: "AgentProtocol", thread: "AgentThread"):
-    """Here we let the thread deal with the previous responses, and we just rerun with the approval."""
-    from agent_framework import ChatMessage
+async def handle_approvals_with_session_streaming(query: str, agent: "BaseAgent", session: "AgentSession"):
+    """Here we let the session deal with the previous responses, and we just rerun with the approval."""
+    from agent_framework import Message
 
-    new_input: list[ChatMessage] = []
+    new_input: list[Message] = []
     new_input_added = True
     while new_input_added:
         new_input_added = False
-        new_input.append(ChatMessage(role="user", text=query))
-        async for update in agent.run_stream(new_input, thread=thread, store=True):
+        new_input.append(Message(role="user", contents=[query]))
+        async for update in agent.run(new_input, stream=True, session=session):
             if update.user_input_requests:
                 for user_input_needed in update.user_input_requests:
                     print(
@@ -101,7 +101,7 @@ async def handle_approvals_with_thread_streaming(query: str, agent: "AgentProtoc
                     )
                     user_approval = input("Approve function call? (y/n): ")
                     new_input.append(
-                        ChatMessage(
+                        Message(
                             role="user", contents=[user_input_needed.create_response(user_approval.lower() == "y")]
                         )
                     )
@@ -115,11 +115,11 @@ async def run_hosted_mcp_without_thread_and_specific_approval() -> None:
     print("=== Mcp with approvals and without thread ===")
     # Tools are provided when creating the agent
     # The agent can use these tools for any query during its lifetime
-    async with ChatAgent(
-        chat_client=medium_client,
+    async with Agent(
+        client=medium_client,
         name="DocsAgent",
         instructions="You are a helpful assistant that can help with microsoft documentation questions.",
-        tools=HostedMCPTool(
+        tools=MCPStreamableHTTPTool(
             name="Microsoft Learn MCP",
             url="https://learn.microsoft.com/api/mcp",
             # we don't require approval for microsoft_docs_search tool calls
@@ -145,11 +145,11 @@ async def run_hosted_mcp_without_approval() -> None:
     print("=== Mcp without approvals ===")
     # Tools are provided when creating the agent
     # The agent can use these tools for any query during its lifetime
-    async with ChatAgent(
-        chat_client=small_client,
+    async with Agent(
+        client=small_client,
         name="DocsAgent",
         instructions="You are a helpful assistant that can help with microsoft documentation questions.",
-        tools=HostedMCPTool(
+        tools=MCPStreamableHTTPTool(
             name="Microsoft Learn MCP",
             url="https://learn.microsoft.com/api/mcp",
             # we don't require approval for any function calls
@@ -171,16 +171,16 @@ async def run_hosted_mcp_without_approval() -> None:
         print(f"{agent.name}: {result2}\n")
 
 
-async def run_hosted_mcp_with_thread() -> None:
-    """Example showing Mcp Tools with approvals using a thread."""
-    print("=== Mcp with approvals and with thread ===")
+async def run_hosted_mcp_with_session() -> None:
+    """Example showing Mcp Tools with approvals using a session."""
+    print("=== Mcp with approvals and with session ===")
     # Tools are provided when creating the agent
     # The agent can use these tools for any query during its lifetime
-    async with ChatAgent(
-        chat_client=completion_client,
+    async with Agent(
+        client=completion_client,
         name="DocsAgent",
         instructions="You are a helpful assistant that can help with microsoft documentation questions.",
-        tools=HostedMCPTool(
+        tools=MCPStreamableHTTPTool(
             name="Microsoft Learn MCP",
             url="https://learn.microsoft.com/api/mcp",
             # we require approval for all function calls
@@ -188,29 +188,29 @@ async def run_hosted_mcp_with_thread() -> None:
         ),
     ) as agent:
         # First query
-        thread = agent.get_new_thread()
+        session = agent.create_session()
         query1 = "How to create an Azure storage account using az cli?"
         print(f"User: {query1}")
-        result1 = await handle_approvals_with_thread(query1, agent, thread)
+        result1 = await handle_approvals_with_thread(query1, agent, session)
         print(f"{agent.name}: {result1}\n")
         print("\n=======================================\n")
         # Second query
         query2 = "What is Microsoft Agent Framework?"
         print(f"User: {query2}")
-        result2 = await handle_approvals_with_thread(query2, agent, thread)
+        result2 = await handle_approvals_with_thread(query2, agent, session)
         print(f"{agent.name}: {result2}\n")
 
 
-async def run_hosted_mcp_with_thread_streaming() -> None:
-    """Example showing Mcp Tools with approvals using a thread."""
-    print("=== Mcp with approvals and with thread ===")
+async def run_hosted_mcp_with_session_streaming() -> None:
+    """Example showing Mcp Tools with approvals using a session."""
+    print("=== Mcp with approvals and with session ===")
     # Tools are provided when creating the agent
     # The agent can use these tools for any query during its lifetime
-    async with ChatAgent(
-        chat_client=completion_client,
+    async with Agent(
+        client=completion_client,
         name="DocsAgent",
         instructions="You are a helpful assistant that can help with microsoft documentation questions.",
-        tools=HostedMCPTool(
+        tools=MCPStreamableHTTPTool(
             name="Microsoft Learn MCP",
             url="https://learn.microsoft.com/api/mcp",
             # we require approval for all function calls
@@ -218,11 +218,11 @@ async def run_hosted_mcp_with_thread_streaming() -> None:
         ),
     ) as agent:
         # First query
-        thread = agent.get_new_thread()
+        session = agent.create_session()
         query1 = "How to create an Azure storage account using az cli?"
         print(f"User: {query1}")
         print(f"{agent.name}: ", end="")
-        async for update in handle_approvals_with_thread_streaming(query1, agent, thread):
+        async for update in handle_approvals_with_session_streaming(query1, agent, session):
             print(update, end="")
         print("\n")
         print("\n=======================================\n")
@@ -230,20 +230,20 @@ async def run_hosted_mcp_with_thread_streaming() -> None:
         query2 = "What is Microsoft Agent Framework?"
         print(f"User: {query2}")
         print(f"{agent.name}: ", end="")
-        async for update in handle_approvals_with_thread_streaming(query2, agent, thread):
+        async for update in handle_approvals_with_session_streaming(query2, agent, session):
             print(update, end="")
         print("\n")
 
-async def run_remote_mcp_with_thread_streaming() -> None:
-    """Example showing Mcp Tools with approvals using a thread."""
-    print("=== Mcp with approvals and with thread ===")
+async def run_remote_mcp_with_session_streaming() -> None:
+    """Example showing Mcp Tools with approvals using a session."""
+    print("=== Mcp with approvals and with session ===")
     # Tools are provided when creating the agent
     # The agent can use these tools for any query during its lifetime
 
     WEATHER_MCP_URL = os.environ.get("WEATHER_MCP_URL", "http://localhost:8001/mcp")
 
-    async with ChatAgent(
-        chat_client=completion_client,
+    async with Agent(
+        client=completion_client,
         name="DocsAgent",
         instructions="You are a helpful assistant that can help with microsoft documentation questions.",
         tools= MCPStreamableHTTPTool(
@@ -252,11 +252,11 @@ async def run_remote_mcp_with_thread_streaming() -> None:
         ),
     ) as agent:
         # First query
-        thread = agent.get_new_thread()
+        session = agent.create_session()
         query1 = "What is the weather in Amsterdam?"
         print(f"User: {query1}")
         print(f"{agent.name}: ", end="")
-        async for update in handle_approvals_with_thread_streaming(query1, agent, thread):
+        async for update in handle_approvals_with_session_streaming(query1, agent, session):
             print(update, end="")
         print("\n")
         print("\n=======================================\n")
@@ -264,7 +264,7 @@ async def run_remote_mcp_with_thread_streaming() -> None:
         query2 = "What is the weather in New York?"
         print(f"User: {query2}")
         print(f"{agent.name}: ", end="")
-        async for update in handle_approvals_with_thread_streaming(query2, agent, thread):
+        async for update in handle_approvals_with_session_streaming(query2, agent, session):
             print(update, end="")
         print("\n")
 
@@ -273,9 +273,9 @@ async def main() -> None:
 
     # await run_hosted_mcp_without_approval()
     # await run_hosted_mcp_without_thread_and_specific_approval()
-    # await run_hosted_mcp_with_thread()
-    # await run_hosted_mcp_with_thread_streaming()
-    await run_remote_mcp_with_thread_streaming()
+    # await run_hosted_mcp_with_session()
+    # await run_hosted_mcp_with_session_streaming()
+    await run_remote_mcp_with_session_streaming()
 
 
 if __name__ == "__main__":

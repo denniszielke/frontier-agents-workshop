@@ -10,7 +10,7 @@ from samples.shared.model_client import create_chat_client
 
 import os
 
-from agent_framework import ChatAgent
+from agent_framework import Agent
 from agent_framework_ag_ui import add_agent_framework_fastapi_endpoint
 
 from fastapi import FastAPI
@@ -24,10 +24,10 @@ medium_model_name = os.environ.get("MEDIUM_DEPLOYMENT_MODEL_NAME")
 medium_client=create_chat_client(medium_model_name)
 
 # Create the AI agent
-agent = ChatAgent(
+agent = Agent(
+    medium_client,
     name="AGUIAssistant",
     instructions="You are a helpful assistant.",
-    chat_client=medium_client,
 )
 
 # Create FastAPI app

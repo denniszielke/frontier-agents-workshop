@@ -12,7 +12,7 @@ from samples.shared.model_client import create_chat_client
 import logging
 import os
 
-from agent_framework import ChatAgent, tool
+from agent_framework import Agent, tool
 from agent_framework.ag_ui import add_agent_framework_fastapi_endpoint
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -61,10 +61,10 @@ def get_time_zone(location: str) -> str:
 # The client will send get_weather tool metadata so the LLM knows about it,
 # and @use_function_invocation on AGUIChatClient will execute it client-side.
 # This matches the .NET AG-UI hybrid execution pattern.
-agent = ChatAgent(
+agent = Agent(
+    medium_client,
     name="AGUIAssistant",
     instructions="You are a helpful assistant. Use get_weather for weather and get_time_zone for time zones.",
-    chat_client=medium_client,
     tools=[get_time_zone],  # ONLY server-side tools
 )
 

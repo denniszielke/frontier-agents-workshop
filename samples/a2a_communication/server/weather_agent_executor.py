@@ -14,7 +14,8 @@ from a2a.types import (
     TaskStatus,
     TaskStatusUpdateEvent,
 )
-from a2a.utils import new_agent_text_message, new_task, new_text_artifact
+from a2a.helpers import new_text_message, new_task, new_text_artifact
+from agent_framework import ChatOptions, Message
 from samples.shared.model_client import create_chat_client as _create_openai_client
 from dotenv import load_dotenv
 
@@ -63,22 +64,13 @@ def weather_agent_card(url: str) -> AgentCard:
             'A simple weather question answering agent that uses a tool '
             'to respond with current-like conditions for requested locations.'
         ),
-        url=f'{url}',
         version='1.0.0',
         default_input_modes=['text'],
         default_output_modes=['text'],
         capabilities=AgentCapabilities(
-            input_modes=['text'],
-            output_modes=['text'],
-            # The current executor implementation performs a single-turn completion
-            # and returns the final result, so we do not enable streaming here.
             streaming=False,
         ),
         skills=[skill],
-        examples=[
-            'What is the weather in Amsterdam?',
-            'What is the weather like in Paris and Berlin?',
-        ],
     )
     return agent_card
 
@@ -103,16 +95,20 @@ class WeatherAgentExecutor(AgentExecutor):
             raise Exception('No message provided')
 
         if not task:
-            task = new_task(context.message)
+            task = new_task(context.task_id, context.context_id, TaskState.TASK_STATE_SUBMITTED)
             await event_queue.enqueue_event(task)
 
-        query = "You are weather expert and know everything about weather. Try to help the user with their input using the tools you have available. " + context.get_user_input()
         # Use the Microsoft agent framework chat client with the weather tool.
         # We do a single-turn completion and treat the result as the final task artifact.
-        query = context.get_user_input()
+        user_input = context.get_user_input()
+        messages = [
+            Message(role="system", contents=["You are a weather expert. Help the user with their input using the tools you have available."]),
+            Message(role="user", contents=[user_input]),
+        ]
+        options = ChatOptions(tools=[get_weather])
 
         # get_response may return a rich object; coerce to string for A2A
-        response = await self.agent.get_response(query, tools=get_weather)
+        response = await self.agent.get_response(messages, options=options)
 
         # Ensure the artifact text is always a plain string
         response_text = str(response)
@@ -132,8 +128,7 @@ class WeatherAgentExecutor(AgentExecutor):
         )
         await event_queue.enqueue_event(
             TaskStatusUpdateEvent(
-                status=TaskStatus(state=TaskState.completed),
-                final=True,
+                status=TaskStatus(state=TaskState.TASK_STATE_COMPLETED),
                 context_id=task.context_id,
                 task_id=task.id,
             )

@@ -1,11 +1,13 @@
 # Microsoft Agent Framework
-agent-framework-a2a==1.0.0b260519
-agent-framework-ag-ui==1.0.0rc2
+agent-framework-a2a==1.0.0b260521
+agent-framework-ag-ui==1.0.0rc3
 agent-framework-azure-ai==1.0.0rc6
-agent-framework-core==1.5.0
-agent-framework-declarative==1.0.0b260519
-agent-framework-devui==1.0.0b260519
-agent-framework-mem0==1.0.0b260519
+agent-framework-core==1.6.0
+agent-framework-declarative==1.0.0b260521
+agent-framework-devui==1.0.0b260521
+agent-framework-foundry==1.6.0
+agent-framework-mem0==1.0.0b260521
+agent-framework-orchestrations==1.0.0rc2
 azure-ai-evaluation==1.16.8
 opentelemetry-semantic-conventions-ai==0.5.1
 # Requirements File
@@ -14,7 +16,7 @@ ag-ui-protocol==0.1.18
 fastapi==0.133.0
 fastmcp==3.3.1
 httpx==0.28.1
-openai==2.37.0
+openai==2.38.0
 pydantic==2.13.4
 python-dotenv==1.2.2
 pytz==2026.2

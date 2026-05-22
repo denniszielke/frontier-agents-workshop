@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from samples.shared.model_client import create_chat_client
-from agent_framework import ChatAgent
+from agent_framework import Agent
 
 """Agent Workflow - Content Review with Quality Routing.
 
@@ -24,7 +24,8 @@ Both paths converge at Summarizer for final report.
 import os
 from typing import Any
 
-from agent_framework import ChatMessage, ConcurrentBuilder
+from agent_framework import Message
+from agent_framework.orchestrations import ConcurrentBuilder
 from pydantic import Field
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -40,34 +41,34 @@ medium_client=create_chat_client(medium_model_name)
 small_client=create_chat_client(small_model_name)    
 
 
-researcher = ChatAgent(
+researcher = Agent(
+    medium_client,
     instructions=(
         "You're an expert market and product researcher. Given a prompt, provide concise, factual insights,"
         " opportunities, and risks."
     ),
     name="researcher",
-    chat_client=medium_client,
 )
 
-marketer = ChatAgent(
+marketer = Agent(
+    small_client,
     instructions=(
         "You're a creative marketing strategist. Craft compelling value propositions and target messaging"
         " aligned to the prompt."
     ),
     name="marketer",
-    chat_client=small_client,
 )
 
-legal = ChatAgent(
+legal = Agent(
+    medium_client,
     instructions=(
         "You're a cautious legal/compliance reviewer. Highlight constraints, disclaimers, and policy concerns"
         " based on the prompt."
     ),
     name="legal",
-    chat_client=medium_client,
 )
 
-workflow = ConcurrentBuilder().participants([researcher, marketer, legal]).build()
+workflow = ConcurrentBuilder(participants=[researcher, marketer, legal]).build()
 
 def main():
     """Launch the branching workflow in DevUI."""
@@ -86,7 +87,7 @@ def main():
     logger.info("- Path 2 (score < 80): Reviewer → Editor → Publisher → Summarizer")
     logger.info("- Both paths converge at Summarizer for final report")
 
-    serve(entities=[workflow], port=8093, auto_open=True)
+    serve(entities=[workflow], port=8093, auto_open=True, auth_enabled=False)
 
 
 if __name__ == "__main__":

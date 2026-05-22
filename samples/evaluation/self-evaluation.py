@@ -8,8 +8,8 @@ import pandas as pd
 from typing import Any
 from dotenv import load_dotenv
 
-from agent_framework import ChatAgent, ChatMessage
-from agent_framework.openai import OpenAIChatClient
+from agent_framework import Agent, Message
+from agent_framework.openai import OpenAIChatCompletionClient
 from openai import AsyncOpenAI
 from azure.ai.evaluation import GroundednessEvaluator, AzureOpenAIModelConfiguration
 
@@ -65,7 +65,7 @@ def create_groundedness_evaluator(judge_model: str) -> GroundednessEvaluator:
 
 async def execute_query_with_self_reflection(
     *,
-    agent: ChatAgent,
+    agent: Agent,
     full_user_query: str,
     context: str,
     evaluator: GroundednessEvaluator,
@@ -93,7 +93,7 @@ async def execute_query_with_self_reflection(
             - total_groundedness_eval_time: Time spent on evaluations (seconds)
             - total_end_to_end_time: Total execution time (seconds)
     """
-    messages = [ChatMessage(role="user", text=full_user_query)]
+    messages = [Message(role="user", contents=[full_user_query])]
 
     best_score = 0
     max_score = 5
@@ -143,7 +143,7 @@ async def execute_query_with_self_reflection(
             print(f"  → No improvement (score: {score}/{max_score}). Trying again...")
         
         # Add to conversation history
-        messages.append(ChatMessage(role="assistant", text=agent_response))
+        messages.append(Message(role="assistant", contents=[agent_response]))
 
         # Request improvement
         reflection_prompt = (
@@ -154,14 +154,14 @@ async def execute_query_with_self_reflection(
             f"account the feedback, but make your answer sound as if it was your first response. "
             f"Don't refer to the feedback in your answer."
         )
-        messages.append(ChatMessage(role="user", text=reflection_prompt))
+        messages.append(Message(role="user", contents=[reflection_prompt]))
     
     end_time = time.time()
     latency = end_time - start_time
 
     # Handle edge case where no response improved the score
-    if best_response is None and raw_response is not None and len(raw_response.messages) > 0:
-        best_response = raw_response.messages[0].text
+    if best_response is None and raw_response is not None:
+        best_response = raw_response.text
         best_iteration = i + 1
 
     return {
@@ -219,17 +219,17 @@ async def run_self_reflection_batch(
         api_key=token
     )
 
-    openai_client=OpenAIChatClient(
-        model_id = model_name,
+    openai_client=OpenAIChatCompletionClient(
+        model = model_name,
         api_key=token,
         async_client = async_openai_client
     )
 
     # Create agent, it loads environment variables AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT automatically
-    agent = ChatAgent(
+    agent = Agent(
+        openai_client,
         name="Self-Reflection Agent",
         instructions="You are a helpful agent.",
-        chat_client=openai_client,
     )
 
     # Load input data
@@ -374,9 +374,13 @@ async def run_self_reflection_batch(
 
 async def main():
     """CLI entry point."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_input = os.path.join(script_dir, "resources", "suboptimal_groundedness_prompts.jsonl")
+    default_output = os.path.join(script_dir, "resources", "results.jsonl")
+
     parser = argparse.ArgumentParser(description="Run self-reflection loop on LLM prompts with groundedness evaluation")
-    parser.add_argument('--input', '-i', default="resources/suboptimal_groundedness_prompts.jsonl", help='Input JSONL file with prompts')
-    parser.add_argument('--output', '-o', default="resources/results.jsonl", help='Output JSONL file for results')
+    parser.add_argument('--input', '-i', default=default_input, help='Input JSONL file with prompts')
+    parser.add_argument('--output', '-o', default=default_output, help='Output JSONL file for results')
     parser.add_argument('--agent-model', '-m', default=DEFAULT_AGENT_MODEL, help=f'Agent model deployment name (default: {DEFAULT_AGENT_MODEL})')
     parser.add_argument('--judge-model', '-e', default=DEFAULT_JUDGE_MODEL, help=f'Judge model deployment name (default: {DEFAULT_JUDGE_MODEL})')
     parser.add_argument('--max-reflections', type=int, default=3, help='Maximum number of self-reflection iterations (default: 3)')

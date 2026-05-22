@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 from random import randrange
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 # Add the project root to the path so we can import from samples.shared
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -14,7 +14,7 @@ import os
 import asyncio
 from random import randint
 from typing import Annotated
-from agent_framework import AgentResponse, ChatAgent, ChatMessage, tool
+from agent_framework import AgentResponse, Agent, Message, tool
 from agent_framework import Content
 from dotenv import load_dotenv
 
@@ -59,7 +59,7 @@ def get_weather_detail(location: Annotated[str, "The city and state, e.g. San Fr
     )
 
 
-async def handle_approvals(query: str, agent: "AgentProtocol") -> AgentResponse:
+async def handle_approvals(query: str, agent: "Agent") -> AgentResponse:
     """Handle function call approvals.
 
     When we don't have a thread, we need to ensure we include the original query,
@@ -80,7 +80,7 @@ async def handle_approvals(query: str, agent: "AgentProtocol") -> AgentResponse:
             )
 
             # Add the assistant message with the approval request
-            new_inputs.append(ChatMessage(role="assistant", contents=[user_input_needed]))
+            new_inputs.append(Message(role="assistant", contents=[user_input_needed]))
 
             # Get user approval
             user_approval = await asyncio.to_thread(input, "\nApprove function call? (y/n): ")
@@ -92,7 +92,7 @@ async def handle_approvals(query: str, agent: "AgentProtocol") -> AgentResponse:
                 function_call=user_input_needed.function_call,
             )
             new_inputs.append(
-                ChatMessage(role="user", contents=[approval_response])
+                Message(role="user", contents=[approval_response])
             )
 
         # Run again with all the context
@@ -101,7 +101,7 @@ async def handle_approvals(query: str, agent: "AgentProtocol") -> AgentResponse:
     return result
 
 
-async def handle_approvals_streaming(query: str, agent: "AgentProtocol") -> None:
+async def handle_approvals_streaming(query: str, agent: "Agent") -> None:
     """Handle function call approvals with streaming responses.
 
     When we don't have a thread, we need to ensure we include the original query,
@@ -114,7 +114,7 @@ async def handle_approvals_streaming(query: str, agent: "AgentProtocol") -> None
         user_input_requests: list[Any] = []
 
         # Stream the response
-        async for chunk in agent.run_stream(current_input):
+        async for chunk in agent.run(current_input, stream=True):
             if chunk.text:
                 print(chunk.text, end="", flush=True)
 
@@ -135,7 +135,7 @@ async def handle_approvals_streaming(query: str, agent: "AgentProtocol") -> None
                 )
 
                 # Add the assistant message with the approval request
-                new_inputs.append(ChatMessage(role="assistant", contents=[user_input_needed]))
+                new_inputs.append(Message(role="assistant", contents=[user_input_needed]))
 
                 # Get user approval
                 user_approval = await asyncio.to_thread(input, "\nApprove function call? (y/n): ")
@@ -148,7 +148,7 @@ async def handle_approvals_streaming(query: str, agent: "AgentProtocol") -> None
                     function_call=user_input_needed.function_call,
                 )
                 new_inputs.append(
-                    ChatMessage(role="user", contents=[approval_response])
+                    Message(role="user", contents=[approval_response])
                 )
 
             # Update input with all the context for next iteration
@@ -159,8 +159,8 @@ async def run_weather_agent_with_approval(is_streaming: bool) -> None:
     """Example showing AI function with approval requirement."""
     print(f"\n=== Weather Agent with Approval Required ({'Streaming' if is_streaming else 'Non-Streaming'}) ===\n")
 
-    async with ChatAgent(
-        chat_client=medium_client,
+    async with Agent(
+        client=medium_client,
         name="WeatherAgent",
         instructions=("You are a helpful weather assistant. Use the get_weather tool to provide weather information."),
         tools=[get_weather, get_weather_detail],

@@ -25,4 +25,5 @@ Input queries:
 Tooling tips:
 Start by running `generation-workflow.py` and `parallel-agents.py` to see how workflows are declared and executed in code. Identify clear stages in your scenario (for example, "collect user preferences", "check weather", "propose plan") and map each stage to a function or agent call. Use the workflow constructs to control sequencing, branching, or simple parallelism rather than embedding that logic directly inside a single agent prompt. When troubleshooting, log the input and output of each workflow step so you can trace how a user query moves through the system. Keep the workflow small and focused; the goal is to understand orchestration patterns, not to build a full production planner.
 
+Your role should be "user" in the inputs
 

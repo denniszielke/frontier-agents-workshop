@@ -14,6 +14,8 @@ from typing import Annotated
 
 from pydantic import Field
 
+from agent_framework import ChatOptions, Message
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -51,15 +53,17 @@ async def main() -> None:
     message = "What's the weather in Amsterdam and in Paris?"
     stream = False
     print(f"User: {message}")
+    messages = [Message(role="user", contents=[message])]
+    options = ChatOptions(tools=[get_weather_at_location])
     if stream:
         print("Assistant: ", end="")
-        async for chunk in client.get_streaming_response(message, tools=get_weather_at_location):
+        async for chunk in client.get_response(messages, stream=True, options=options):
             if chunk.text:
                 print(chunk.text, end="")
         print("")
     else:
-        response = await client.get_response(message, tools=get_weather_at_location)
-        print(f"Assistant: {response}")
+        response = await client.get_response(messages, options=options)
+        print(f"Assistant: {response.text}")
 
 
 if __name__ == "__main__":
